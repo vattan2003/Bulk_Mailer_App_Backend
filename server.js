@@ -91,18 +91,13 @@ app.post("/sendMail", async (req, res) => {
   try {
     const { message, recipients } = req.body;
 
-
     console.log("\n========== NEW CAMPAIGN ==========");
-    console.log("Total recipients:", recipients?.length);
 
-
-    // Validation
     if (!message || !message.trim()) {
       return res.status(400).json({
         message: "Email message is required",
       });
     }
-
 
     if (!Array.isArray(recipients) || recipients.length === 0) {
       return res.status(400).json({
@@ -110,30 +105,16 @@ app.post("/sendMail", async (req, res) => {
       });
     }
 
+    console.log("Total recipients:", recipients.length);
 
     const results = [];
 
-
-    // Send to every recipient
     for (let i = 0; i < recipients.length; i++) {
       const email = String(recipients[i]).trim();
-
 
       console.log(
         `[${i + 1}/${recipients.length}] Sending to: ${email}`
       );
-
-
-      if (!email) {
-        results.push({
-          email,
-          status: "failed",
-          error: "Empty email address",
-        });
-
-        continue;
-      }
-
 
       try {
         const info = await transporter.sendMail({
@@ -141,32 +122,32 @@ app.post("/sendMail", async (req, res) => {
             name: "BulkMailer",
             address: process.env.EMAIL_USER,
           },
-
           to: email,
-
           subject: "BulkMailer Test",
-
           text: message,
-
           html: `
             <h2>BulkMailer Test</h2>
             <p>${message}</p>
           `,
         });
 
-
-        console.log(`SUCCESS: ${email}`);
-
+        console.log(`[${i + 1}/${recipients.length}] SUCCESS`);
+        console.log("Accepted:", info.accepted);
+        console.log("Rejected:", info.rejected);
 
         results.push({
           email,
           status: "success",
+          accepted: info.accepted,
+          rejected: info.rejected,
           messageId: info.messageId,
         });
 
-
       } catch (error) {
-        console.error(`FAILED: ${email}`);
+        console.error(
+          `[${i + 1}/${recipients.length}] FAILED:`,
+          error.message
+        );
 
         results.push({
           email,
@@ -176,50 +157,27 @@ app.post("/sendMail", async (req, res) => {
       }
     }
 
+    console.log("========== FINAL RESULTS ==========");
+    console.log(JSON.stringify(results, null, 2));
 
-    // ================================
-    // Calculate statistics
-    // ================================
-    const successful = results.filter(
+    const successCount = results.filter(
       (item) => item.status === "success"
     ).length;
 
-
-    const failed = results.filter(
+    const failedCount = results.filter(
       (item) => item.status === "failed"
     ).length;
 
-
-    // ================================
-    // Save campaign to MongoDB
-    // ================================
-    const newHistory = new EmailHistory({
-      message,
-      totalRecipients: recipients.length,
-      successful,
-      failed,
-      results,
-    });
-
-
-    await newHistory.save();
-
-
-    console.log("Campaign saved to history");
-
-
-    // Return response
     return res.status(200).json({
-      message: "Email campaign completed",
+      message: "Email sending completed",
       total: recipients.length,
-      successful,
-      failed,
+      successful: successCount,
+      failed: failedCount,
       results,
     });
-
 
   } catch (error) {
-    console.error("Server Error:", error);
+    console.error("Server Error:", error.message);
 
     return res.status(500).json({
       message: "Failed to send emails",
